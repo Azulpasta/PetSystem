@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Button from '../components/Button';
 import InputForm from '../components/Input';
-import logoVet from "../assets/logoVet .png";
+import logoVet from "../assets/logoVet.png";
 
 const CadastroPage = ({ onGoToLogin }) => {
     const [formData, setFormData] = useState({

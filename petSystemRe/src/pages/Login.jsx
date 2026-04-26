@@ -1,8 +1,8 @@
-import "./main.css";
+import "../style.css";
 import { useState } from "react";
-import Button from "./../components/Button";
+import { Button } from "./../components/Button";
 import InputForm from "../components/Input";
-import logoVet from "../assets/logoVet .png";
+import logoVet from "../assets/logoVet.png";
 
 async function loginRequest(email, password) {
     return fetch("http://localhost:3000/login", {
@@ -14,7 +14,7 @@ async function loginRequest(email, password) {
     });
 }
 
-const Login = ({ onGoToCadastroPage }) => {
+const Login = ({ onGoToCadastroPage, onGoToTelaPrincipal }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [email, setEmail] = useState("");
@@ -36,8 +36,9 @@ const Login = ({ onGoToCadastroPage }) => {
             }
 
             console.log("Login OK:", result);
+            onGoToTelaPrincipal();
 
-        } catch (err) {
+        } catch {
             setError("Erro de conexão com o servidor");
         } finally {
             setLoading(false);
@@ -46,13 +47,9 @@ const Login = ({ onGoToCadastroPage }) => {
 
     return (
         <div className="min-h-screen flex flex-col md:flex-row bg-[#F8F9FA]">
-
             <div className="hidden md:flex flex-1 items-center justify-center bg-white border-r border-gray-100">
-
                 <div className="flex flex-col items-center justify-center gap-6">
-
                     <img src={logoVet} alt="Logo" className="w-[200px]" />
-
                     <h1 className="text-[#8A2BE2] text-5xl font-extrabold tracking-tight">
                         PetSystem
                     </h1>
