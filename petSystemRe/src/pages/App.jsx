@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, Outlet, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, Outlet, useLocation, useParams } from 'react-router-dom';
 
 import Login from './Login';
 import CadastroPage from './Cadastro';
@@ -9,6 +9,10 @@ import FormNewAppointment from './agenda/FormAgenda';
 import ViewVaccination from './Vacinacao';
 import PlaceholderPage from '../components/PlaceholderPage';
 import Sidebar from '../components/Menu';
+import ViewProntuarios from './prontuario/Prontuario';
+import ProntuarioDetalhe from './prontuario/ProntuarioDetalhe';
+import EditarPet from './prontuario/EditarPet';
+import NovoRegistro from '../components/prontuario/NovoRegistro';
 
 export default function App() {
     const [appointments, setAppointments] = useState([
@@ -49,7 +53,10 @@ export default function App() {
                         }
                     />
                     <Route path="vacinacao" element={<VacinacaoWrapper />} />
-                    <Route path="prontuarios" element={<PlaceholderPage title="Prontuários" />} />
+                    <Route path="prontuarios" element={<ProntuariosWrapper />} />
+                    <Route path="prontuarios/:id" element={<ProntuarioDetalheWrapper />} />
+                    <Route path="prontuarios/:id/editar" element={<EditarPetWrapper />} />
+                    <Route path="prontuarios/:id/novo-registro" element={<NovoRegistroWrapper />} />
                     <Route path="cadastros" element={<PlaceholderPage title="Cadastros" />} />
                     <Route path="estoque" element={<PlaceholderPage title="Estoque" />} />
                     <Route path="financeiro" element={<PlaceholderPage title="Financeiro" />} />
@@ -164,4 +171,29 @@ function FormAgendaWrapper({ onSubmit }) {
 
 function VacinacaoWrapper() {
     return <ViewVaccination />;
+}
+
+function ProntuariosWrapper() {
+    return <ViewProntuarios />;
+}
+
+function ProntuarioDetalheWrapper() {
+    const { id } = useParams();
+    const navigate = useNavigate();
+
+    return (
+        <ProntuarioDetalhe
+            prontuarioId={id}
+            isAdmin={true}
+            onVoltar={() => navigate('/dashboard/prontuarios')}
+        />
+    );
+}
+
+function EditarPetWrapper() {
+    return <EditarPet />;
+}
+
+function NovoRegistroWrapper() {
+    return <NovoRegistro />;
 }

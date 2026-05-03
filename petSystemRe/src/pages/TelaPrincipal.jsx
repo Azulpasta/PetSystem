@@ -16,10 +16,10 @@ export default function TelaPrincipal({ onGoToLogin, onGoToFormAgenda, appointme
     //VAZIO POR ENQUANTO    
     ]);
 
-    const demoDateStr = '2026-04-03';
+    const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
     const todayAppointments = useMemo(() =>
-        appointments.filter(app => app.date === demoDateStr).sort((a, b) => a.time.localeCompare(b.time))
-        , [appointments]);
+        appointments.filter(app => app.date === todayStr).sort((a, b) => a.time.localeCompare(b.time))
+        , [appointments, todayStr]);
 
     // modal novo aviso
     const handleAddPostit = () => {
@@ -114,15 +114,19 @@ export default function TelaPrincipal({ onGoToLogin, onGoToFormAgenda, appointme
                             </section>
                         </div>
 
-                        <aside className="w-80 bg-white p-6 shadow-sm border-l border-gray-100 overflow-y-auto">
-                            <h3 className="text-[#8A2BE2] font-bold text-lg mb-6 text-center">Hoje - 03 de Abril</h3>
-                            {todayAppointments.map(app => <AppointmentCard key={app.id} {...app} />)}
+                        <aside className="w-80 bg-white p-6 shadow-sm border-l border-gray-100 flex flex-col h-screen">
+                            <div className="mb-6">
+                                <h3 className="text-[#8A2BE2] font-bold text-lg mb-6 text-center">Hoje</h3>
+                                <p className="text-center text-gray-400 text-xs font-bold mt-1">
+                                    {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}
+                                </p>
+                            </div>
+                            <div className="flex-1 overflow-y-auto pr-1">
+                                {todayAppointments.map(app => <AppointmentCard key={app.id} {...app} />)}
+                            </div>
                             <button onClick={() => navigate('/dashboard/agenda')} className="mt-6 w-full bg-[#D81B60] text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-pink-100 hover:bg-[#b0164e] transition-all cursor-pointer">
                                 <CalendarIcon size={20} /> Agenda completa
                             </button>
-
-
-
                         </aside>
                     </div>
 
