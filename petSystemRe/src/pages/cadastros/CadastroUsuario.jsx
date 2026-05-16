@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Campo from "../../components/cadastros/CampoForm";
 
-//Tipos de acesso disponíveis
+//Tipos de acesso disponíveis DEIXAR SO UM
 const TIPOS_ACESSO = [
   {
     value: "usuario",
@@ -24,7 +24,7 @@ const TIPOS_ACESSO = [
  *  - onVoltar: () => void        → botão cancelar / voltar
  *  - onSalvar: (dados) => void   → submete o formulário
  *
- * Quando o backend estiver pronto, chame onSalvar(dados) e faça o POST lá fora.
+ * chamar onSalvar(dados) 
  */
 export default function CadastrarUsuario({ onVoltar, onSalvar }) {
   const [form, setForm] = useState({
@@ -167,7 +167,6 @@ export default function CadastrarUsuario({ onVoltar, onSalvar }) {
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      {/* Radio visual */}
                       <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
                         selecionado ? "border-purple-600" : "border-gray-300"
                       }`}>

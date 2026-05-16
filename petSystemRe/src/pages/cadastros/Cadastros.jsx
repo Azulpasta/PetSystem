@@ -9,7 +9,7 @@ export const TIPOS_ACESSO = {
   ADMINISTRADOR: "Administrador",
 };
 
-// Mock data 
+// Mock data - APAGAR DEPOIS
 const mockUsuarios = [
   {
     id: "1",
@@ -76,7 +76,6 @@ function ModalConfirmarExclusao({ usuario, onConfirmar, onCancelar }) {
 }
 
 
-// ─── Componente principal ─────────────────────────────────────────────────────
 /**
  * Cadastros
  *
@@ -86,8 +85,7 @@ function ModalConfirmarExclusao({ usuario, onConfirmar, onCancelar }) {
  *  - onCadastrarUsuario: fn     → abre o modal/página de cadastro de usuário
  *  - onVerAnimais: (nomes) => void → callback ao clicar nos animais de um cliente
  *
- * Quando o backend estiver pronto, descomente o useEffect abaixo e
- * substitua `mockUsuarios` pela resposta da API.
+ * substituir `mockUsuarios` pela resposta da API.
  */
 export default function Cadastros({
   isAdmin = true,
@@ -104,14 +102,14 @@ export default function Cadastros({
 
   //Carregar dados 
   useEffect(() => {
-    // Simulação de fetch — substitua pelo fetch real:
+    // Simulação de fetch 
     // fetch(`/api/cadastros?isAdmin=${isAdmin}`)
     //   .then(r => r.json())
     //   .then(data => setUsuarios(data))
     //   .finally(() => setLoading(false));
 
     setTimeout(() => {
-      // Usuários normais só veem clientes
+      // usuários normais só veem clientes (TEM QUE MUDAR ESSE NOME DEPOIS)
       setUsuarios(
         isAdmin
           ? mockUsuarios
@@ -139,7 +137,6 @@ export default function Cadastros({
 
   
   function handleEditar(usuario) {
-    // TODO: abrir modal de edição ou navegar para página de edição
     console.log("Editar:", usuario);
   }
 
@@ -148,7 +145,6 @@ export default function Cadastros({
   }
 
   function confirmarExclusao() {
-    // TODO: DELETE /api/cadastros/:id
     setUsuarios((prev) => prev.filter((u) => u.id !== usuarioParaExcluir.id));
     setUsuarioParaExcluir(null);
   }

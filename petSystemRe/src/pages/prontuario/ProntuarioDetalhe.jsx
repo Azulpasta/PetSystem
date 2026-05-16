@@ -96,7 +96,7 @@ const TIPO_MAP = {
    - prontuarioId: string  → ID do prontuário para buscar na API
    - isAdmin: boolean       → habilita o botão de edição no caso de ser adm
  
-  Quando o backend estiver pronto, substituir o `mockProntuario` pela chamada fetch dentro do useEffect.
+  substituir o `mockProntuario` pela chamada fetch dentro do useEffect.
  */
 
 
@@ -143,7 +143,7 @@ export default function ProntuarioDetalhe({ prontuarioId, isAdmin = true, onVolt
     }
 
     function handleSalvarRegistro(novoItem) {
-        // Aqui você enviaria para a API: POST /api/prontuarios/:id/historico
+        // enviar para a API: POST /api/prontuarios/:id/historico
         const id = `h${Date.now()}`;
         const [dataPart, horaPart] = (novoItem.dataHora || "").split("T");
         const dataFormatada = dataPart
