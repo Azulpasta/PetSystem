@@ -9,6 +9,7 @@ import FormNewAppointment from './agenda/FormAgenda';
 import ViewVaccination from './Vacinacao';
 import PlaceholderPage from '../components/PlaceholderPage';
 import Sidebar from '../components/Menu';
+import Estoque from './Estoque';
 import ViewProntuarios from './prontuario/Prontuario';
 import ProntuarioDetalhe from './prontuario/ProntuarioDetalhe';
 import EditarPet from './prontuario/EditarPet';
@@ -16,6 +17,7 @@ import Cadastros from './cadastros/Cadastros';
 import CadastrarCliente from './cadastros/CadastrarCliente';
 import CadastrarUsuario from './cadastros/CadastroUsuario';
 import PerfilUsuario from './cadastros/PerfilUsuario';
+import Financeiro from './Financeiro';
 
 
 export default function App() {
@@ -64,8 +66,8 @@ export default function App() {
                     <Route path="cadastros/novo" element={<CadastrarClienteWrapper />} />
                     <Route path="cadastros/novo-usuario" element={<CadastrarUsuarioWrapper />} />
                     <Route path="cadastros/:id" element={<PerfilUsuarioWrapper />} />
-                    <Route path="estoque" element={<PlaceholderPage title="Estoque" />} />
-                    <Route path="financeiro" element={<PlaceholderPage title="Financeiro" />} />
+                    <Route path="estoque" element={<Estoque />} />
+                    <Route path="financeiro" element={<Financeiro />} />
                 </Route>
             </Routes>
         </BrowserRouter>
