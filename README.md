@@ -64,6 +64,36 @@ npm run preview
 npm run lint
 ```
 
+## ▶️ Rodar o sistema (do zero)
+
+Estas instruções servem para fazer o sistema rodar em outra máquina a partir do repositório clonado.
+
+Opção A — Recomendado (somente Docker): requer apenas `Docker` e `docker compose` instalados.
+
+```bash
+# a partir do diretório raiz do projeto
+docker compose -f docker-compose.yml up --build
+# ou usar o helper (equivalente):
+./run.sh --docker
+```
+
+Opção B — Modo desenvolvimento local (requer Python 3, pip e Node/npm):
+
+```bash
+# script helper que prepara venv, instala dependências, sobe MySQL e inicia frontend/backend localmente
+bash run.sh
+```
+
+Se precisar resetar o banco de dados (apagar dados locais do container MySQL):
+
+```bash
+docker compose -f docker-compose.yml down -v
+```
+
+Notas:
+- O modo Docker evita a necessidade de ter Python/npm instalados na máquina host.
+- Em ambiente macOS, se o MySQL falhar por corrupção de volume, rode `docker compose down -v` e tente novamente.
+
 ---
 
 ## 📂 Estrutura do Projeto
