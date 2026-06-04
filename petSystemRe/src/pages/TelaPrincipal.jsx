@@ -5,8 +5,14 @@ import { Button, QuickAction } from '../components/Button';
 import AppointmentCard from '../components/AppointmentCard';
 import ModalRegistrarSaida from '../components/estoque/ModalRegistrarSaida';
 import ModalInserirGasto from '../components/financeiro/ModalInserirGasto';
-import { fakeApi } from './Estoque';
+import { listarProdutos, registrarSaida } from '../services/estoqueService';
+import { tutoresService } from '../services/tutoresService';
+import { adicionarLancamento, listarLancamentos } from '../services/financeiroService';
 import { Syringe, UserPlus, ArrowUpRight, Plus, Calendar as CalendarIcon } from 'lucide-react';
+
+function fmtBrl(v) {
+    return Number(Math.abs(v)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 
 export default function TelaPrincipal({ onGoToLogin, onGoToFormAgenda, appointments }) {
@@ -18,28 +24,57 @@ export default function TelaPrincipal({ onGoToLogin, onGoToFormAgenda, appointme
     const [produtos, setProdutos] = useState([]);
     const [clientes, setClientes] = useState([]);
     const [loadingSaida, setLoadingSaida] = useState(true);
+    const [kpi, setKpi] = useState({ receita: 0, gastos: 0, caixa: 0 });
+    const [alertasEstoque, setAlertasEstoque] = useState([]);
 
     useEffect(() => {
-        const carregarDadosSaida = async () => {
+        const carregarDados = async () => {
             setLoadingSaida(true);
-            const [prods, cls] = await Promise.all([fakeApi.getProdutos(), fakeApi.getClientes()]);
-            setProdutos(prods);
-            setClientes(cls);
+            const mesAtual = new Date().getMonth() + 1;
+            const [prods, cls, lancamentos] = await Promise.all([
+                listarProdutos(),
+                tutoresService.list(),
+                listarLancamentos(),
+            ]);
+            const prodsList = prods || [];
+            setProdutos(prodsList);
+            setClientes((cls.data || []).map((tutor) => ({
+                id: tutor.id,
+                nome: tutor.nome,
+                cpf: tutor.cpf,
+            })));
+
+            const parseDataMes = (str) => {
+                if (!str) return 0;
+                const parts = String(str).split('/');
+                return parts.length === 3 ? Number(parts[1]) : 0;
+            };
+            const doMes = (lancamentos || []).filter(l => parseDataMes(l.data) === mesAtual);
+            const receita = doMes.filter(l => l.tipo === 'receita').reduce((a, l) => a + l.valor, 0);
+            const gastos  = doMes.filter(l => l.tipo === 'gasto').reduce((a, l) => a + l.valor, 0);
+            const caixa   = (lancamentos || []).reduce((a, l) => {
+                const m = parseDataMes(l.data);
+                if (m > mesAtual) return a;
+                return l.tipo === 'receita' ? a + l.valor : a - l.valor;
+            }, 0);
+            setKpi({ receita, gastos, caixa });
+            setAlertasEstoque(prodsList.filter(p => p.quantidade <= p.estoque_minimo));
             setLoadingSaida(false);
         };
 
-        carregarDadosSaida();
+        carregarDados();
     }, []);
 
-    const handleSaidaRegistrada = async () => {
-        const prods = await fakeApi.getProdutos();
-        setProdutos(prods);
+    const handleSaidaRegistrada = async (itens, cliente) => {
+        await registrarSaida(itens, cliente || null);
+        setProdutos(await listarProdutos());
         setModalSaida(false);
     };
 
-    const [postits, setPostits] = useState([
-    //VAZIO POR ENQUANTO    
-    ]);
+    const [postits, setPostits] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('petsystem_postits') || '[]'); }
+        catch { return []; }
+    });
 
     const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
     const todayAppointments = useMemo(() =>
@@ -58,12 +93,16 @@ export default function TelaPrincipal({ onGoToLogin, onGoToFormAgenda, appointme
         setIsModalOpen(true);
     };
 
-    // att
+    const persistPostits = (list) => {
+        setPostits(list);
+        try { localStorage.setItem('petsystem_postits', JSON.stringify(list)); } catch {}
+    };
+
     const handleSavePostit = (text) => {
         if (!text.trim()) return;
 
         if (editingPostit) {
-            setPostits(postits.map(p => p.id === editingPostit.id ? { ...p, text } : p));
+            persistPostits(postits.map(p => p.id === editingPostit.id ? { ...p, text } : p));
         } else {
             const colors = ['bg-[#FFE87F]', 'bg-[#FF9B9B]', 'bg-[#33E300]', 'bg-[#BAE1FF]'];
             const randomColor = colors[Math.floor(Math.random() * colors.length)];
@@ -83,19 +122,18 @@ export default function TelaPrincipal({ onGoToLogin, onGoToFormAgenda, appointme
                     transform: `rotate(${randomRotate}deg)`
                 }
             };
-            setPostits([...postits, newPostit]);
+            persistPostits([...postits, newPostit]);
         }
         setIsModalOpen(false);
     };
 
-    // função de excluir 
     const handleDeletePostit = (id) => {
-        setPostits(postits.filter(p => p.id !== id));
+        persistPostits(postits.filter(p => p.id !== id));
         setIsModalOpen(false);
     };
 
-    const handleInserirGasto = (novoGasto) => {
-        console.log('Gasto inserido:', novoGasto);
+    const handleInserirGasto = async (novoGasto) => {
+        await adicionarLancamento(novoGasto);
         setModalGasto(false);
     };
 
@@ -103,6 +141,46 @@ export default function TelaPrincipal({ onGoToLogin, onGoToFormAgenda, appointme
         <div className="flex-1 flex overflow-hidden">
             <div className="flex flex-1">
                         <div className="flex-1 p-8 overflow-y-auto">
+                            {/* KPIs financeiros do mês */}
+                            <section className="mb-6">
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5">
+                                        <p className="text-sm font-semibold text-purple-600 mb-1">Receita do mês</p>
+                                        <p className="text-[28px] font-bold text-gray-900 leading-none">
+                                            {loadingSaida ? <span className="text-gray-300">—</span> : `R$ ${fmtBrl(kpi.receita)}`}
+                                        </p>
+                                    </div>
+                                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5">
+                                        <p className="text-sm font-semibold text-purple-600 mb-1">Gastos do mês</p>
+                                        <p className="text-[28px] font-bold text-gray-900 leading-none">
+                                            {loadingSaida ? <span className="text-gray-300">—</span> : `R$ ${fmtBrl(kpi.gastos)}`}
+                                        </p>
+                                    </div>
+                                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5">
+                                        <p className="text-sm font-semibold text-purple-600 mb-1">Caixa</p>
+                                        <p className={`text-[28px] font-bold leading-none ${kpi.caixa < 0 ? 'text-red-500' : 'text-gray-900'}`}>
+                                            {loadingSaida ? <span className="text-gray-300">—</span> : `R$ ${fmtBrl(kpi.caixa)}`}
+                                        </p>
+                                    </div>
+                                </div>
+                            </section>
+
+                            {/* Alertas de estoque mínimo */}
+                            {alertasEstoque.length > 0 && (
+                                <section className="mb-6 bg-yellow-50 border border-yellow-200 rounded-2xl px-6 py-4">
+                                    <p className="text-sm font-bold text-yellow-700 mb-2">
+                                        Estoque abaixo do mínimo ({alertasEstoque.length} produto{alertasEstoque.length > 1 ? 's' : ''})
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {alertasEstoque.map(p => (
+                                            <span key={p.id} className="text-xs bg-yellow-100 text-yellow-800 font-semibold px-3 py-1 rounded-full border border-yellow-300">
+                                                {p.nome} — {p.quantidade} un
+                                            </span>
+                                        ))}
+                                    </div>
+                                </section>
+                            )}
+
                             <section className="bg-white rounded-3xl p-8 shadow-sm mb-8">
                                 <h3 className="text-black font-bold text-xl mb-6">Atalhos</h3>
                                 <div className="flex flex-wrap gap-4">

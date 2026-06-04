@@ -9,29 +9,32 @@ function ModalInserirGasto({ onClose, onInserir }) {
   const [descricao,  setDesc]   = useState("");
   const [data,       setData]   = useState("");
   const [categoria,  setCat]    = useState("");
+  const [tipoManual, setTipo]   = useState("receita");
   const [valor,      setValor]  = useState("");
   const [status,     setStatus] = useState("");
   const [loading,    setLoad]   = useState(false);
+  const [erro,       setErro]   = useState("");
+
+  function handleCategoria(val) {
+    setCat(val);
+    setTipo(CATEGORIAS_GASTO.includes(val) ? "gasto" : "receita");
+  }
 
   async function handleInserir() {
     if (!descricao || !data || !categoria || !valor || !status) {
-      alert("Preencha todos os campos."); return;
+      setErro("Preencha todos os campos."); return;
     }
+    setErro("");
     setLoad(true);
-    // dd/mm/yyyy
     const [y, m, d] = data.split("-");
     const dataFmt = `${d}/${m}/${y}`;
-    const tipo = CATEGORIAS_GASTO.includes(categoria) && categoria !== "Outro" ? "gasto" : "receita";
-    const novo = {
-      descricao,
-      data: dataFmt,
-      categoria,
-      valor: parseFloat(valor),
-      status,
-      tipo,
-    };
-    setLoad(false);
-    onInserir(novo);
+    try {
+      await onInserir({ descricao, data: dataFmt, categoria, valor: parseFloat(valor), status, tipo: tipoManual });
+    } catch (err) {
+      setErro(err?.error || err?.message || 'Erro ao inserir lançamento.');
+    } finally {
+      setLoad(false);
+    }
   }
 
   return (
@@ -58,7 +61,7 @@ function ModalInserirGasto({ onClose, onInserir }) {
           <div>
             <label className="text-sm text-gray-800 mb-1.5 block">Categoria:</label>
             <div className="relative">
-              <select value={categoria} onChange={e => setCat(e.target.value)}
+              <select value={categoria} onChange={e => handleCategoria(e.target.value)}
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 bg-white appearance-none text-gray-500">
                 <option value="" disabled>Selecione a categoria</option>
                 <optgroup label="Receitas">
@@ -99,6 +102,7 @@ function ModalInserirGasto({ onClose, onInserir }) {
           </div>
         </div>
 
+        {erro && <p className="text-sm text-red-600 mb-3 text-center">{erro}</p>}
         <div className="flex gap-3">
           <button onClick={onClose}
             className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold rounded-2xl py-3.5 text-sm transition-colors">

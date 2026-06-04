@@ -1,62 +1,62 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useAuth } from '../hooks/useAuth';
+import { tutoresService } from '../services/tutoresService';
+import { cadastrarProduto, deletarProduto, listarProdutos, listarSaidas, registrarSaida } from '../services/estoqueService';
 import ModalRegistrarSaida from "../components/estoque/ModalRegistrarSaida";
 import ModalNovoProduto from "../components/estoque/ModalNovoProduto";
 
 
-// Mock data e fakeApi para teste front
 export const CATEGORIAS = ["Ração", "Medicamento", "Higiene", "Acessório", "Outro"];
 
-export const produtosMock = [
-    { id: "1", nome: "Ração Premium Adulto 10kg", marca: "PetBom", categoria: "Ração", quantidade: 50, precoUnitario: 105.50 },
-    { id: "2", nome: "Vermífugo Oral 10ml", marca: "SaúdePet", categoria: "Medicamento", quantidade: 20, precoUnitario: 60.00 },
-    { id: "3", nome: "Shampoo Antipulgas 250ml", marca: "LimpezaPet", categoria: "Higiene", quantidade: 72, precoUnitario: 25.00 },
-    { id: "4", nome: "Coleira Anti-pulgas", marca: "PetSafe", categoria: "Acessório", quantidade: 15, precoUnitario: 40.00 },
-];
-
-export const clientesMock = [
-    { id: "c1", nome: "Julia Eduarda Fernandes Silva", cpf: "111.111.111-11" },
-    { id: "c2", nome: "Sara Ferreira Rodrigues", cpf: "222.222.222-22" },
-];
+function SortLabel({ active, direction }) {
+    return (
+        <span className="text-[10px] font-bold text-gray-400 leading-none">
+            {active ? (direction === "asc" ? "▲" : "▼") : ""}
+        </span>
+    );
+}
 
 export function fmt(v) {
     return Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-let _produtos = [...produtosMock];
-let _clientes = [...clientesMock];
+const VIEWS = ["Produtos", "Histórico"];
 
-export const fakeApi = {
-    getProdutos: () => Promise.resolve([..._produtos]),
-    getClientes: () => Promise.resolve([..._clientes]),
-    addProduto: (p) => {
-        const novo = { ...p, id: Date.now().toString() };
-        _produtos = [..._produtos, novo];
-        return Promise.resolve(novo);
-    },
-    registrarSaida: (itens) => {
-        _produtos = _produtos.map(p => {
-            const item = itens.find(i => i.produtoId === p.id);
-            return item ? { ...p, quantidade: p.quantidade - item.quantidade } : p;
-        });
-        return Promise.resolve({ ok: true });
-    }
-};
-
-export default function Estoque({ onRegistrarSaida }) {
+export default function Estoque({ canManage = true }) {
+    const { user } = useAuth();
+    const [viewAtiva, setViewAtiva] = useState("Produtos");
     const [produtos, setProdutos] = useState([]);
     const [clientes, setClientes] = useState([]);
+    const [historico, setHistorico] = useState([]);
     const [loading, setLoading] = useState(true);
     const [busca, setBusca] = useState("");
     const [tabAtiva, setTabAtiva] = useState("Todos");
     const [modalNovo, setModalNovo] = useState(false);
     const [modalSaida, setModalSaida] = useState(false);
+    const podeEscrever = canManage && user?.tipo !== 'cliente';
+    const [sortConfig, setSortConfig] = useState({ key: "nome", direction: "asc" });
 
-    // carrega dados
+    function handleSort(key) {
+        setSortConfig(prev => ({
+            key,
+            direction: prev.key === key && prev.direction === "asc" ? "desc" : "asc",
+        }));
+    }
+
     async function carregarDados() {
         setLoading(true);
-        const [prods, cls] = await Promise.all([fakeApi.getProdutos(), fakeApi.getClientes()]);
-        setProdutos(prods);
-        setClientes(cls);
+        const [prods, cls, hist] = await Promise.all([
+            listarProdutos(),
+            tutoresService.list(),
+            listarSaidas(),
+        ]);
+        setProdutos(prods || []);
+        setClientes((cls.data || []).map((tutor) => ({
+            id: tutor.id,
+            nome: tutor.nome,
+            cpf: tutor.cpf,
+        })));
+        setHistorico(hist || []);
         setLoading(false);
     }
 
@@ -69,46 +69,77 @@ export default function Estoque({ onRegistrarSaida }) {
     const categoriasPresentes = [...new Set(produtos.map(p => p.categoria))];
     const tabs = ["Todos", ...CATEGORIAS.filter(c => categoriasPresentes.includes(c))];
 
-    const produtosFiltrados = produtos.filter(p => {
+    const produtosFiltrados = useMemo(() => {
         const t = busca.toLowerCase();
-        const matchBusca = !busca ||
-            p.nome.toLowerCase().includes(t) ||
-            p.marca.toLowerCase().includes(t) ||
-            p.categoria.toLowerCase().includes(t);
-        const matchTab = tabAtiva === "Todos" || p.categoria === tabAtiva;
-        return matchBusca && matchTab;
-    });
+        const filtrados = produtos.filter(p => {
+            const matchBusca = !busca ||
+                p.nome.toLowerCase().includes(t) ||
+                p.marca.toLowerCase().includes(t) ||
+                p.categoria.toLowerCase().includes(t);
+            const matchTab = tabAtiva === "Todos" || p.categoria === tabAtiva;
+            return matchBusca && matchTab;
+        });
+        const factor = sortConfig.direction === "asc" ? 1 : -1;
+        return [...filtrados].sort((a, b) => {
+            if (sortConfig.key === "totalEstoque")
+                return (a.quantidade * a.precoUnitario - b.quantidade * b.precoUnitario) * factor;
+            const aVal = a[sortConfig.key];
+            const bVal = b[sortConfig.key];
+            if (typeof aVal === "number") return (aVal - bVal) * factor;
+            return String(aVal || "").localeCompare(String(bVal || ""), "pt-BR") * factor;
+        });
+    }, [produtos, busca, tabAtiva, sortConfig]);
 
     async function handleCadastrar(novo) {
         try {
-            // envia  e att o novo produto para salvar na API e obtém o produto com o ID gerado
-            const produtoAdicionado = await fakeApi.addProduto(novo);
+            const produtoAdicionado = await cadastrarProduto(novo);
             setProdutos(prev => [...prev, produtoAdicionado]);
             setModalNovo(false);
         } catch (err) {
-            console.error("Erro ao cadastrar produto na fakeApi:", err);
+            console.error("Erro ao cadastrar produto:", err);
+            throw err;
         }
     }
 
-    async function handleSaida(itens) {
+    const podeRemover = user?.tipo === 'admin' || user?.tipo === 'gerente';
+
+    async function handleDeletar(id) {
+        if (!window.confirm('Remover produto do estoque?')) return;
         try {
-            // registra a saída para atualizar o array em memória (_produtos)
-            await fakeApi.registrarSaida(itens);
-            // att
-            setProdutos(prev => prev.map(p => {
-                const item = itens.find(i => i.produtoId === p.id);
-                return item ? { ...p, quantidade: p.quantidade - item.quantidade } : p;
-            }));
+            await deletarProduto(id);
+            setProdutos(prev => prev.filter(p => p.id !== id));
+        } catch (err) {
+            alert(err?.error || err?.message || 'Erro ao remover produto.');
+        }
+    }
+
+    async function handleSaida(itens, cliente) {
+        try {
+            const resultado = await registrarSaida(itens, cliente || null);
+            setProdutos(resultado.produtos.length ? resultado.produtos : await listarProdutos());
+            setHistorico(await listarSaidas());
             setModalSaida(false);
         } catch (err) {
-            console.error("Erro ao registrar saída na fakeApi:", err);
+            console.error("Erro ao registrar saída:", err);
+            throw err;
         }
     }
 
     return (
         <div className="flex-1 min-h-screen bg-gray-100">
             <div className="px-8 py-8">
-                <h1 className="text-2xl font-bold text-gray-900 mb-6">Estoque e produtos</h1>
+                <div className="flex items-center justify-between mb-6">
+                    <h1 className="text-2xl font-bold text-gray-900">Estoque e produtos</h1>
+                    <div className="flex gap-1 bg-gray-200 rounded-xl p-1">
+                        {VIEWS.map(v => (
+                            <button key={v} onClick={() => setViewAtiva(v)}
+                                className={`px-5 py-2 rounded-lg text-sm font-semibold transition-colors ${viewAtiva === v ? "bg-white text-purple-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                                {v}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                {viewAtiva === "Produtos" && (<>
                 <div className="flex gap-4 mb-6 items-stretch">
                     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-7 py-5 w-[310px] flex-shrink-0">
                         <p className="text-sm font-semibold text-purple-600 mb-2">Total de itens</p>
@@ -123,14 +154,14 @@ export default function Estoque({ onRegistrarSaida }) {
                         </p>
                     </div>
                     <div className="flex flex-col gap-2 justify-center flex-shrink-0">
-                        <button onClick={() => setModalNovo(true)}
+                        {podeEscrever && <button onClick={() => setModalNovo(true)}
                             className="bg-pink-500 hover:bg-pink-600 text-white font-bold text-sm px-6 py-3 rounded-xl transition-colors shadow-sm whitespace-nowrap">
                             Novo produto
-                        </button>
-                        <button onClick={() => setModalSaida(true)}
+                        </button>}
+                        {podeEscrever && <button onClick={() => setModalSaida(true)}
                             className="bg-white hover:bg-pink-50 text-pink-500 font-bold text-sm px-6 py-3 rounded-xl transition-colors border-2 border-pink-400 whitespace-nowrap">
                             Registrar saída
-                        </button>
+                        </button>}
                     </div>
                 </div>
 
@@ -158,12 +189,25 @@ export default function Estoque({ onRegistrarSaida }) {
                     </div>
 
                     <div className="flex justify-between items-center px-5 py-3 border-t border-b border-gray-100 bg-white">
-                        <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[30%]">Produto</span>
-                        <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[18%]">Marca</span>
-                        <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[14%]">Categoria</span>
-                        <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[10%] text-center">Quantidade</span>
-                        <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[13%] text-right">Preço Un.</span>
-                        <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[15%] text-right">Total Estoq.</span>
+                        <button type="button" onClick={() => handleSort("nome")} className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[30%] flex items-center gap-1">
+                            <span>Produto</span><SortLabel active={sortConfig.key === "nome"} direction={sortConfig.direction} />
+                        </button>
+                        <button type="button" onClick={() => handleSort("marca")} className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[18%] flex items-center gap-1">
+                            <span>Marca</span><SortLabel active={sortConfig.key === "marca"} direction={sortConfig.direction} />
+                        </button>
+                        <button type="button" onClick={() => handleSort("categoria")} className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[14%] flex items-center gap-1">
+                            <span>Categoria</span><SortLabel active={sortConfig.key === "categoria"} direction={sortConfig.direction} />
+                        </button>
+                        <button type="button" onClick={() => handleSort("quantidade")} className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[10%] flex items-center justify-center gap-1">
+                            <span>Quantidade</span><SortLabel active={sortConfig.key === "quantidade"} direction={sortConfig.direction} />
+                        </button>
+                        <button type="button" onClick={() => handleSort("precoUnitario")} className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[13%] flex items-center justify-end gap-1">
+                            <span>Preço Un.</span><SortLabel active={sortConfig.key === "precoUnitario"} direction={sortConfig.direction} />
+                        </button>
+                        <button type="button" onClick={() => handleSort("totalEstoque")} className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[15%] flex items-center justify-end gap-1">
+                            <span>Total Estoq.</span><SortLabel active={sortConfig.key === "totalEstoque"} direction={sortConfig.direction} />
+                        </button>
+                        {podeRemover && <span className="w-[6%]" />}
                     </div>
                     {loading ? (
                         <div className="flex items-center justify-center py-16">
@@ -185,19 +229,69 @@ export default function Estoque({ onRegistrarSaida }) {
                                 <span className="text-[14px] font-medium text-gray-800 w-[15%] text-right">
                                     {fmt(p.quantidade * p.precoUnitario)}
                                 </span>
+                                {podeRemover && (
+                                    <button onClick={() => handleDeletar(p.id)}
+                                        className="w-[6%] flex justify-end text-gray-300 hover:text-red-500 transition-colors"
+                                        title="Remover produto">
+                                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                                        </svg>
+                                    </button>
+                                )}
                             </div>
                         ))
                     )}
                 </div>
-            </div>
+                </>)}
 
-            {modalNovo && (
+                {viewAtiva === "Histórico" && (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="flex justify-between items-center px-5 py-3 border-b border-gray-100 bg-white">
+                        <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[22%]">Produto</span>
+                        <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[12%]">Tipo</span>
+                        <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[10%] text-center">Qtd</span>
+                        <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[20%]">Usuário</span>
+                        <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[20%]">Data/Hora</span>
+                        <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide w-[16%]">Observação</span>
+                    </div>
+                    {loading ? (
+                        <div className="flex items-center justify-center py-16">
+                            <div className="w-7 h-7 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                        </div>
+                    ) : historico.length === 0 ? (
+                        <div className="text-center py-14 text-gray-400 text-sm">Nenhuma movimentação registrada.</div>
+                    ) : (
+                        historico.map((h, i) => {
+                            const isEntrada = h.tipo === 'entrada';
+                            const dataHora = h.dataHora ? new Date(h.dataHora).toLocaleString('pt-BR') : '—';
+                            return (
+                                <div key={h.id ?? i}
+                                    className={`flex justify-between items-center px-5 py-4 bg-white transition-colors hover:bg-gray-50 ${i < historico.length - 1 ? "border-b border-gray-100" : ""}`}>
+                                    <span className="text-[14px] text-gray-800 w-[22%]">{h.produtoNome || '—'}</span>
+                                    <span className={`text-[13px] font-semibold w-[12%] ${isEntrada ? 'text-green-600' : 'text-red-500'}`}>
+                                        {isEntrada ? 'Entrada' : 'Saída'}
+                                    </span>
+                                    <span className={`text-[14px] font-bold w-[10%] text-center ${isEntrada ? 'text-green-600' : 'text-red-500'}`}>
+                                        {isEntrada ? '+' : '-'}{h.quantidade}
+                                    </span>
+                                    <span className="text-[13px] text-gray-600 w-[20%]">{h.usuarioNome || '—'}</span>
+                                    <span className="text-[13px] text-gray-500 w-[20%]">{dataHora}</span>
+                                    <span className="text-[13px] text-gray-400 w-[16%] truncate" title={h.observacoes}>{h.observacoes || '—'}</span>
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+            )}
+            </div>{/* /px-8 py-8 */}
+
+            {modalNovo && podeEscrever && (
                 <ModalNovoProduto
                     onClose={() => setModalNovo(false)}
                     onCadastrar={handleCadastrar}
                 />
             )}
-            {modalSaida && (
+            {modalSaida && podeEscrever && (
                 <ModalRegistrarSaida
                     produtos={produtos}
                     clientes={clientes}

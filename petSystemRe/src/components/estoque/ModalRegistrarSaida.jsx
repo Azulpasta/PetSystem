@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { fakeApi, fmt } from '../../pages/Estoque';
+import { fmt } from '../../pages/Estoque';
 
 function ModalRegistrarSaida({ produtos, clientes, onClose, onSaida }) {
   const [buscaCliente, setBusca]     = useState("");
@@ -9,6 +9,7 @@ function ModalRegistrarSaida({ produtos, clientes, onClose, onSaida }) {
   const [quantidade, setQty]         = useState("");
   const [itens, setItens]            = useState([]);
   const [loading, setLoad]           = useState(false);
+  const [erro, setErro]              = useState("");
   const clienteRef = useRef(null);
 
   useEffect(() => {
@@ -51,11 +52,16 @@ function ModalRegistrarSaida({ produtos, clientes, onClose, onSaida }) {
   const subtotal = itens.reduce((a, i) => a + i.total, 0);
 
   async function handleRegistrar() {
-    if (itens.length === 0) { alert("Adicione pelo menos um item."); return; }
+    if (itens.length === 0) { setErro("Adicione pelo menos um item."); return; }
+    setErro("");
     setLoad(true);
-    await fakeApi.registrarSaida(itens);
-    setLoad(false);
-    onSaida(itens);
+    try {
+      await onSaida(itens, clienteSel);
+    } catch (err) {
+      setErro(err?.error || err?.message || "Erro ao registrar saída.");
+    } finally {
+      setLoad(false);
+    }
   }
 
   return (
@@ -102,7 +108,7 @@ function ModalRegistrarSaida({ produtos, clientes, onClose, onSaida }) {
             <div className="flex-1">
               <label className="text-sm text-gray-800 mb-1.5 block">Categoria:</label>
               <div className="relative">
-                <select value={produtoSel} onChange={e => setProdSel(e.target.value)}
+                <select value={produtoSel} onChange={e => setProdSel(Number(e.target.value))}
                   className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 bg-white appearance-none text-gray-500">
                   <option value="" disabled>Selecionar produto</option>
                   {produtos.map(p => (
@@ -170,6 +176,7 @@ function ModalRegistrarSaida({ produtos, clientes, onClose, onSaida }) {
           </div>
         )}
 
+        {erro && <p className="text-sm text-red-600 mb-3 text-center">{erro}</p>}
         <div className="flex gap-3">
           <button onClick={onClose}
             className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold rounded-2xl py-3.5 text-sm transition-colors">

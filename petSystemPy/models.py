@@ -345,3 +345,156 @@ class Vaccine(db.Model):
             'lote': self.lote,
             'observacao': self.observacao,
         }
+
+
+class Produto(db.Model):
+    __tablename__ = 'PRODUTO'
+
+    id_produto = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(100), nullable=False)
+    marca = db.Column(db.String(100))
+    categoria = db.Column(db.String(50), nullable=False, default='Outro')
+    descricao = db.Column(db.Text)
+    quantidade_estoque = db.Column(db.Integer, nullable=False, default=0)
+    estoque_minimo = db.Column(db.Integer, nullable=False, default=0)
+    valor_unitario = db.Column(db.Numeric(10, 2), nullable=False)
+    ativo = db.Column(db.Boolean, default=True, nullable=False)
+
+    id = synonym('id_produto')
+    quantidade = synonym('quantidade_estoque')
+    preco_unitario = synonym('valor_unitario')
+
+    movimentacoes = db.relationship('MovimentacaoEstoque', backref='produto', lazy=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'nome': self.nome,
+            'marca': self.marca,
+            'categoria': self.categoria or 'Outro',
+            'descricao': self.descricao,
+            'quantidade': self.quantidade,
+            'estoque_minimo': self.estoque_minimo,
+            'precoUnitario': float(self.valor_unitario) if self.valor_unitario is not None else 0,
+            'ativo': self.ativo,
+        }
+
+
+class MovimentacaoEstoque(db.Model):
+    __tablename__ = 'MOVIMENTACAO_ESTOQUE'
+
+    id_movimentacao = db.Column(db.Integer, primary_key=True)
+    id_produto = db.Column(db.Integer, db.ForeignKey('PRODUTO.id_produto'), nullable=False)
+    id_usuario = db.Column(db.Integer, db.ForeignKey('USUARIO.id_usuario'), nullable=False)
+    tipo_movimentacao = db.Column(db.Enum('entrada', 'saida', 'ajuste', 'devolucao'), nullable=False)
+    quantidade = db.Column(db.Integer, nullable=False)
+    data_hora = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    observacoes = db.Column(db.Text)
+
+    id = synonym('id_movimentacao')
+    tipo = synonym('tipo_movimentacao')
+
+    usuario = db.relationship('User')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'produto_id': self.id_produto,
+            'produto_nome': self.produto.nome if self.produto else None,
+            'usuario_id': self.id_usuario,
+            'usuario_nome': self.usuario.nome if self.usuario else None,
+            'tipo': self.tipo,
+            'quantidade': self.quantidade,
+            'data_hora': self.data_hora.isoformat() if self.data_hora else None,
+            'observacoes': self.observacoes,
+        }
+
+
+class Servico(db.Model):
+    __tablename__ = 'SERVICO'
+
+    id_servico = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(100), nullable=False)
+    descricao = db.Column(db.Text, nullable=True)
+    valor = db.Column(db.Numeric(10, 2), nullable=False)
+    ativo = db.Column(db.Boolean, default=True)
+
+    id = synonym('id_servico')
+
+    def to_dict(self):
+        return {
+            'id': self.id_servico,
+            'nome': self.nome,
+            'descricao': self.descricao,
+            'valor': float(self.valor) if self.valor is not None else None,
+            'ativo': self.ativo,
+        }
+
+
+class Atendimento(db.Model):
+    __tablename__ = 'ATENDIMENTO'
+
+    id_atendimento = db.Column(db.Integer, primary_key=True)
+    id_pet = db.Column(db.Integer, db.ForeignKey('PET.id_pet', ondelete='RESTRICT'), nullable=False)
+    id_veterinario = db.Column(db.Integer, db.ForeignKey('VETERINARIO.id_veterinario', ondelete='RESTRICT'), nullable=False)
+    data_hora = db.Column(db.DateTime, nullable=False)
+    tipo_atendimento = db.Column(db.Enum('consulta', 'retorno', 'emergencia', 'preventivo'), nullable=False)
+    status = db.Column(db.Enum('agendado', 'em_progresso', 'concluido', 'cancelado'), nullable=False, default='agendado')
+    queixa_principal = db.Column(db.Text, nullable=False)
+    diagnostico = db.Column(db.Text, nullable=True)
+    observacoes = db.Column(db.Text, nullable=True)
+
+    id = synonym('id_atendimento')
+
+    def to_dict(self):
+        return {
+            'id': self.id_atendimento,
+            'petId': self.id_pet,
+            'veterinarioId': self.id_veterinario,
+            'dataHora': self.data_hora.isoformat() if self.data_hora else None,
+            'tipo': self.tipo_atendimento,
+            'status': self.status,
+            'queixaPrincipal': self.queixa_principal,
+            'diagnostico': self.diagnostico,
+            'observacoes': self.observacoes,
+        }
+
+
+class LancamentoFinanceiro(db.Model):
+    __tablename__ = 'LANCAMENTO_FINANCEIRO'
+
+    id_lancamento = db.Column(db.Integer, primary_key=True)
+    id_pet = db.Column(db.Integer, db.ForeignKey('PET.id_pet', ondelete='SET NULL'), nullable=True)
+    id_tutor = db.Column(db.Integer, db.ForeignKey('TUTOR.id_tutor', ondelete='SET NULL'), nullable=True)
+    id_atendimento = db.Column(db.Integer, db.ForeignKey('ATENDIMENTO.id_atendimento', ondelete='SET NULL'), nullable=True)
+    id_servico = db.Column(db.Integer, db.ForeignKey('SERVICO.id_servico', ondelete='SET NULL'), nullable=True)
+    tipo_lancamento = db.Column(db.Enum('receita', 'despesa', 'devolucao'), nullable=False)
+    categoria = db.Column(db.String(50), nullable=False)
+    descricao = db.Column(db.Text, nullable=False)
+    valor = db.Column(db.Numeric(10, 2), nullable=False)
+    data_lancamento = db.Column(db.Date, nullable=False)
+    forma_pagamento = db.Column(db.Enum('dinheiro', 'cartao_credito', 'cartao_debito', 'pix', 'boleto', 'cheque'), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='Pago')
+
+    id = synonym('id_lancamento')
+
+    pet = db.relationship('Pet')
+    tutor = db.relationship('Tutor')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'pet_id': self.id_pet,
+            'tutor_id': self.id_tutor,
+            'atendimento_id': self.id_atendimento,
+            'servico_id': self.id_servico,
+            'tipo': self.tipo_lancamento,
+            'categoria': self.categoria,
+            'descricao': self.descricao,
+            'valor': float(self.valor) if self.valor is not None else 0,
+            'data_lancamento': self.data_lancamento.isoformat() if self.data_lancamento else None,
+            'forma_pagamento': self.forma_pagamento,
+            'status': self.status,
+            'pet_nome': self.pet.nome if self.pet else None,
+            'tutor_nome': self.tutor.nome if self.tutor else None,
+        }

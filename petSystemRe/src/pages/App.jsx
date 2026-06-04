@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, Outlet, useLocation, useParams } from 'react-router-dom';
 
-import { AuthProvider } from '../context/AuthContext';
 import { useAuth } from '../hooks/useAuth';
-import { authService } from '../services/authService';
 import { usuariosService } from '../services/usuariosService';
 import { agendamentosService } from '../services/agendamentosService';
 
@@ -27,10 +25,13 @@ import AuthExpiryHandler from '../components/AuthExpiryHandler';
 
 
 export default function App() {
+    const { user, logout } = useAuth();
     const [appointments, setAppointments] = useState([]);
     const [appointmentsLoading, setAppointmentsLoading] = useState(true);
 
-    const [saidasEstoque, setSaidasEstoque] = useState([]);
+    const role = user?.tipo || 'atendente';
+    const isAdmin = role === 'admin';
+    const canManageOperational = role === 'admin' || role === 'atendente' || role === 'gerente';
 
     const formatHora = (hora) => {
         if (!hora) return '';
@@ -83,60 +84,42 @@ export default function App() {
         await carregarAgendamentos();
     };
 
-    const handleRegistrarSaidaEstoque = (itens) => {
-        const novasSaidas = itens.map(item => ({
-            id: Date.now().toString(),
-            data: new Date().toISOString().split('T')[0],
-            produtoId: item.produtoId,
-            produtoNome: item.produtoNome,
-            quantidade: item.quantidade,
-            precoUnitario: item.precoUnitario,
-            clienteId: item.clienteId,
-            clienteNome: item.clienteNome,
-            total: item.quantidade * item.precoUnitario,
-            timestamp: Date.now(),
-        }));
-        setSaidasEstoque((prev) => [...prev, ...novasSaidas]);
-    };
-
     return (
-        <AuthProvider>
-            <BrowserRouter>
-                <AuthExpiryHandler />
-                <Routes>
-                    <Route path="/" element={<LoginWrapper />} />
-                    <Route path="/cadastro" element={<CadastroWrapper />} />
-                    <Route path="/agenda" element={<Navigate replace to="/dashboard/agenda" />} />
-                    <Route path="/vacinacao" element={<Navigate replace to="/dashboard/vacinacao" />} />
-                    <Route path="/dashboard" element={<DashboardLayout />}>
-                        <Route index element={<TelaPrincipalWrapper appointments={appointments} />} />
-                        <Route path="agenda" element={<AgendaWrapper appointments={appointments} loading={appointmentsLoading} />} />
-                        <Route
-                            path="form-agenda"
-                            element={
-                                <FormAgendaWrapper
-                                    onSubmit={handleAddNewAppointment}
-                                />
-                            }
-                        />
-                        <Route path="vacinacao" element={<VacinacaoWrapper />} />
-                        <Route path="prontuarios" element={<ProntuariosWrapper />} />
-                        <Route path="prontuarios/:id" element={<ProntuarioDetalheWrapper />} />
-                        <Route path="prontuarios/:id/editar" element={<EditarPetWrapper />} />
-                        <Route path="cadastros" element={<CadastrosWrapper />} />
-                        <Route path="cadastros/novo" element={<CadastrarClienteWrapper />} />
-                        <Route path="cadastros/novo-usuario" element={<CadastrarUsuarioWrapper />} />
-                        <Route path="cadastros/:id" element={<PerfilUsuarioWrapper />} />
-                        <Route path="estoque" element={<EstoqueWrapper onRegistrarSaida={handleRegistrarSaidaEstoque} />} />
-                        <Route path="financeiro" element={<FinanceiroWrapper appointments={appointments} saidasEstoque={saidasEstoque} />} />
-                    </Route>
-                </Routes>
-            </BrowserRouter>
-        </AuthProvider>
+        <BrowserRouter>
+            <AuthExpiryHandler />
+            <Routes>
+                <Route path="/" element={<LoginWrapper />} />
+                <Route path="/cadastro" element={<CadastroWrapper />} />
+                <Route path="/agenda" element={<Navigate replace to="/dashboard/agenda" />} />
+                <Route path="/vacinacao" element={<Navigate replace to="/dashboard/vacinacao" />} />
+                <Route path="/dashboard" element={<DashboardLayout onLogout={logout} />}>
+                    <Route index element={<TelaPrincipalWrapper appointments={appointments} />} />
+                    <Route path="agenda" element={<AgendaWrapper appointments={appointments} loading={appointmentsLoading} />} />
+                    <Route
+                        path="form-agenda"
+                        element={
+                            <FormAgendaWrapper
+                                onSubmit={handleAddNewAppointment}
+                            />
+                        }
+                    />
+                    <Route path="vacinacao" element={<VacinacaoWrapper canManage={canManageOperational} />} />
+                    <Route path="prontuarios" element={<ProntuariosWrapper />} />
+                    <Route path="prontuarios/:id" element={<ProntuarioDetalheWrapper isAdmin={isAdmin} />} />
+                    <Route path="prontuarios/:id/editar" element={<EditarPetWrapper />} />
+                    <Route path="cadastros" element={<CadastrosWrapper isAdmin={isAdmin} />} />
+                    <Route path="cadastros/novo" element={<CadastrarClienteWrapper />} />
+                    <Route path="cadastros/novo-usuario" element={<CadastrarUsuarioWrapper isAdmin={isAdmin} />} />
+                    <Route path="cadastros/:id" element={<PerfilUsuarioWrapper isAdmin={isAdmin} />} />
+                    <Route path="estoque" element={<EstoqueWrapper canManage={canManageOperational} />} />
+                    <Route path="financeiro" element={<FinanceiroWrapper appointments={appointments} canManage={canManageOperational} />} />
+                </Route>
+            </Routes>
+        </BrowserRouter>
     );
 }
 
-function DashboardLayout() {
+function DashboardLayout({ onLogout }) {
     const navigate = useNavigate();
     const location = useLocation();
 
@@ -162,7 +145,10 @@ function DashboardLayout() {
             <Sidebar
                 activePage={activePage}
                 onNavigate={handleMenuNavigate}
-                onLogout={() => navigate('/')}
+                onLogout={async () => {
+                    await onLogout?.();
+                    navigate('/');
+                }}
             />
             <main className="flex-1 overflow-hidden">
                 <Outlet />
@@ -221,12 +207,12 @@ function TelaPrincipalWrapper({ appointments }) {
     );
 }
 
-function CadastrosWrapper() {
+function CadastrosWrapper({ isAdmin }) {
     const navigate = useNavigate();
 
     return (
         <Cadastros
-            isAdmin={true}
+            isAdmin={isAdmin}
             onCadastrarCliente={() => navigate('/dashboard/cadastros/novo')}
             onCadastrarUsuario={() => navigate('/dashboard/cadastros/novo-usuario')}
             onVerPerfil={(id) => navigate(`/dashboard/cadastros/${id}`)}
@@ -251,8 +237,12 @@ function CadastrarClienteWrapper() {
     );
 }
 
-function CadastrarUsuarioWrapper() {
+function CadastrarUsuarioWrapper({ isAdmin }) {
     const navigate = useNavigate();
+
+    if (!isAdmin) {
+        return <Navigate replace to="/dashboard/cadastros" />;
+    }
 
     const mapTipoUsuario = (tipoAcesso) => {
         if (tipoAcesso === 'administrador') return 'admin';
@@ -279,14 +269,14 @@ function CadastrarUsuarioWrapper() {
     );
 }
 
-function PerfilUsuarioWrapper() {
+function PerfilUsuarioWrapper({ isAdmin }) {
     const { id } = useParams();
     const navigate = useNavigate();
 
     return (
         <PerfilUsuario
             usuarioId={id}
-            isAdmin={true}
+            isAdmin={isAdmin}
             onVoltar={() => navigate('/dashboard/cadastros')}
             onEditar={() => navigate('/dashboard/cadastros')}
             onVerProntuario={() => navigate('/dashboard/prontuarios')}
@@ -322,22 +312,22 @@ function FormAgendaWrapper({ onSubmit }) {
     );
 }
 
-function VacinacaoWrapper() {
-    return <ViewVaccination />;
+function VacinacaoWrapper({ canManage }) {
+    return <ViewVaccination canManage={canManage} />;
 }
 
 function ProntuariosWrapper() {
     return <ViewProntuarios />;
 }
 
-function ProntuarioDetalheWrapper() {
+function ProntuarioDetalheWrapper({ isAdmin }) {
     const { id } = useParams();
     const navigate = useNavigate();
 
     return (
         <ProntuarioDetalhe
             prontuarioId={id}
-            isAdmin={true}
+            isAdmin={isAdmin}
             onVoltar={() => navigate('/dashboard/prontuarios')}
         />
     );
@@ -347,17 +337,17 @@ function EditarPetWrapper() {
     return <EditarPet />;
 }
 
-function EstoqueWrapper({ onRegistrarSaida }) {
-    return <Estoque onRegistrarSaida={onRegistrarSaida} />;
+function EstoqueWrapper({ canManage }) {
+    return <Estoque canManage={canManage} />;
 }
 
-function FinanceiroWrapper({ appointments = [], saidasEstoque = [] }) {
+function FinanceiroWrapper({ appointments = [], canManage }) {
     return (
         <Financeiro
             agendamentos={appointments}
             prontuarios={[]}
             vendas={[]}
-            saidasEstoque={saidasEstoque}
+            canManage={canManage}
         />
     );
 }

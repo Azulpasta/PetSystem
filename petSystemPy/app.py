@@ -1,4 +1,5 @@
 import os
+from sqlalchemy import inspect, text
 from flask import Flask
 from flask_cors import CORS
 from flask_migrate import Migrate
@@ -49,6 +50,27 @@ def ensure_default_veterinarios(app):
             print(f'⚠️  Warning: Could not seed default veterinarios: {e}')
 
 
+def ensure_inventory_columns(app):
+    with app.app_context():
+        try:
+            inspector = inspect(db.engine)
+
+            produto_columns = {column['name'] for column in inspector.get_columns('PRODUTO')}
+            if 'categoria' not in produto_columns:
+                db.session.execute(text("ALTER TABLE PRODUTO ADD COLUMN categoria VARCHAR(50) NOT NULL DEFAULT 'Outro' AFTER marca"))
+                db.session.execute(text("UPDATE PRODUTO SET categoria = 'Outro' WHERE categoria IS NULL OR categoria = ''"))
+
+            lancamento_columns = {column['name'] for column in inspector.get_columns('LANCAMENTO_FINANCEIRO')}
+            if 'status' not in lancamento_columns:
+                db.session.execute(text("ALTER TABLE LANCAMENTO_FINANCEIRO ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'Pago' AFTER forma_pagamento"))
+                db.session.execute(text("UPDATE LANCAMENTO_FINANCEIRO SET status = 'Pago' WHERE status IS NULL OR status = ''"))
+
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(f'⚠️  Warning: Could not ensure inventory columns: {e}')
+
+
 def create_app(config_name=None):
     """
     Application factory pattern.
@@ -68,7 +90,7 @@ def create_app(config_name=None):
     CORS(app, resources={
         r"/api/*": {
             "origins": "*",
-            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"],
             "supports_credentials": False
         }
@@ -111,12 +133,19 @@ def create_app(config_name=None):
         print(f'⚠️  Warning: Could not import usuarios blueprint: {e}')
 
     try:
+        from api.estoque import estoque_bp
+        app.register_blueprint(estoque_bp, url_prefix='/api')
+    except ImportError as e:
+        print(f'⚠️  Warning: Could not import estoque blueprint: {e}')
+
+    try:
         from api.veterinarios import veterinarios_bp
         app.register_blueprint(veterinarios_bp, url_prefix='/api')
     except ImportError as e:
         print(f'⚠️  Warning: Could not import veterinarios blueprint: {e}')
 
     ensure_default_veterinarios(app)
+    ensure_inventory_columns(app)
 
     @app.route('/api/health', methods=['GET'])
     def health():
@@ -144,9 +173,10 @@ def create_app(config_name=None):
 
 
 if __name__ == '__main__':
+    env = os.getenv('FLASK_ENV', 'development')
     app = create_app()
     app.run(
         host='0.0.0.0',
         port=int(os.getenv('SERVER_PORT', 5000)),
-        debug=os.getenv('FLASK_ENV') == 'development'
+        debug=env == 'development'
     )

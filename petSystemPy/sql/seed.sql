@@ -58,13 +58,13 @@ INSERT INTO VACINA (nome, fabricante, descricao, intervalo_dias, ativa) VALUES
 ('Leucemia Felina', 'Laboratório Z', 'Vacinação contra leucemia em gatos', 30, TRUE);
 
 -- PRODUCTS (Inventory)
-INSERT INTO PRODUTO (nome, marca, descricao, quantidade_estoque, estoque_minimo, valor_unitario, ativo) VALUES
-('Ração Premium Cão 15kg', 'MarcaA', 'Ração para cães adultos', 50, 10, 80.00, TRUE),
-('Ração Premium Gato 5kg', 'MarcaA', 'Ração para gatos adultos', 30, 5, 60.00, TRUE),
-('Coleira Antipulga Cão', 'MarcaB', 'Coleira antiparasitária', 20, 5, 45.00, TRUE),
-('Vermífugo Cão 10kg', 'MarcaC', 'Medicamento antiparasitário', 15, 5, 35.00, TRUE),
-('Shampoo Hipoalergênico', 'MarcaD', 'Shampoo para peles sensíveis', 25, 5, 50.00, TRUE),
-('Brinquedo Kong', 'MarcaE', 'Brinquedo interativo', 40, 10, 55.00, TRUE);
+INSERT INTO PRODUTO (nome, marca, categoria, descricao, quantidade_estoque, estoque_minimo, valor_unitario, ativo) VALUES
+('Ração Premium Cão 15kg', 'MarcaA', 'Ração', 'Ração para cães adultos', 50, 10, 80.00, TRUE),
+('Ração Premium Gato 5kg', 'MarcaA', 'Ração', 'Ração para gatos adultos', 30, 5, 60.00, TRUE),
+('Coleira Antipulga Cão', 'MarcaB', 'Acessório', 'Coleira antiparasitária', 20, 5, 45.00, TRUE),
+('Vermífugo Cão 10kg', 'MarcaC', 'Medicamento', 'Medicamento antiparasitário', 15, 5, 35.00, TRUE),
+('Shampoo Hipoalergênico', 'MarcaD', 'Higiene', 'Shampoo para peles sensíveis', 25, 5, 50.00, TRUE),
+('Brinquedo Kong', 'MarcaE', 'Acessório', 'Brinquedo interativo', 40, 10, 55.00, TRUE);
 
 -- ============================================
 -- TIER 2: Pet-related Data
@@ -192,13 +192,13 @@ INSERT INTO MOVIMENTACAO_ESTOQUE (id_produto, id_usuario, tipo_movimentacao, qua
 -- TIER 7: Financial
 -- ============================================
 
-INSERT INTO LANCAMENTO_FINANCEIRO (id_pet, id_tutor, id_atendimento, id_servico, tipo_lancamento, categoria, descricao, valor, data_lancamento, forma_pagamento) VALUES
-(1, 1, 1, 1, 'receita', 'consulta', 'Consulta geral com Dr. Pedro', 150.00, '2025-04-20', 'cartao_credito'),
-(2, 1, 2, 1, 'receita', 'consulta', 'Consulta geral com Dra. Fernanda', 150.00, '2025-04-21', 'pix'),
-(3, 2, 3, 1, 'receita', 'retorno', 'Retorno - Controle diabetes', 150.00, '2025-04-22', 'dinheiro'),
-(5, 3, 4, 1, 'receita', 'consulta', 'Primeira consulta - Charlie', 150.00, '2025-04-23', 'cartao_debito'),
-(6, 4, 5, 5, 'receita', 'emergencia', 'Atendimento emergência - Mimi', 200.00, '2025-04-24', 'pix'),
-(NULL, 1, NULL, 2, 'receita', 'vacinacao', 'Venda de ração premium', 160.00, '2025-04-20', 'dinheiro');
+INSERT INTO LANCAMENTO_FINANCEIRO (id_pet, id_tutor, id_atendimento, id_servico, tipo_lancamento, categoria, descricao, valor, data_lancamento, forma_pagamento, status) VALUES
+(1, 1, 1, 1, 'receita', 'consulta', 'Consulta geral com Dr. Pedro', 150.00, '2025-04-20', 'cartao_credito', 'Pago'),
+(2, 1, 2, 1, 'receita', 'consulta', 'Consulta geral com Dra. Fernanda', 150.00, '2025-04-21', 'pix', 'Pago'),
+(3, 2, 3, 1, 'receita', 'retorno', 'Retorno - Controle diabetes', 150.00, '2025-04-22', 'dinheiro', 'Pago'),
+(5, 3, 4, 1, 'receita', 'consulta', 'Primeira consulta - Charlie', 150.00, '2025-04-23', 'cartao_debito', 'Pago'),
+(6, 4, 5, 5, 'receita', 'emergencia', 'Atendimento emergência - Mimi', 200.00, '2025-04-24', 'pix', 'Pago'),
+(NULL, 1, NULL, 2, 'receita', 'vacinacao', 'Venda de ração premium', 160.00, '2025-04-20', 'dinheiro', 'Pago');
 
 -- ============================================
 -- TIER 8: Communications

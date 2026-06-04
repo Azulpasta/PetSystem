@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { fakeApi, CATEGORIAS } from '../../pages/Estoque';
+import { CATEGORIAS } from '../../pages/Estoque';
 import Campo from '../cadastros/CampoForm';
 
 function ModalNovoProduto({ onClose, onCadastrar }) {
@@ -10,18 +10,25 @@ function ModalNovoProduto({ onClose, onCadastrar }) {
   const [preco,      setPreco] = useState("");
   const [loading,    setLoad]  = useState(false);
 
+  const [erro, setErro] = useState("");
+
   async function handleSubmit() {
     if (!nome || !marca || !categoria || !quantidade || !preco) {
-      alert("Preencha todos os campos."); return;
+      setErro("Preencha todos os campos."); return;
     }
+    setErro("");
     setLoad(true);
-    const novo = await fakeApi.addProduto({
-      nome, marca, categoria,
-      quantidade: Number(quantidade),
-      precoUnitario: parseFloat(preco),
-    });
-    setLoad(false);
-    onCadastrar(novo);
+    try {
+      await onCadastrar({
+        nome, marca, categoria,
+        quantidade: Number(quantidade),
+        precoUnitario: parseFloat(preco),
+      });
+    } catch (err) {
+      setErro(err?.error || err?.message || "Erro ao cadastrar produto.");
+    } finally {
+      setLoad(false);
+    }
   }
 
   return (
@@ -67,7 +74,6 @@ function ModalNovoProduto({ onClose, onCadastrar }) {
               className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
           </div>
           <div>
-            <label className="text-sm text-gray-800 mb-1.5 block">Preço unitário (R$):</label>
             <Campo
               label="Preço unitário (R$):"
               value={preco}
@@ -77,6 +83,7 @@ function ModalNovoProduto({ onClose, onCadastrar }) {
           </div>
         </div>
 
+        {erro && <p className="text-sm text-red-600 mb-3 text-center">{erro}</p>}
         <div className="flex gap-3">
           <button onClick={onClose}
             className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold rounded-2xl py-3.5 text-sm transition-colors">

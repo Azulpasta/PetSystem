@@ -1,25 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import CategoriaDropdown from "../components/financeiro/CategoriaDropdown";
 import ModalInserirGasto from "../components/financeiro/ModalInserirGasto";
-import { consolidarLancamentosFinanceiros } from "../utils/financialDataTransformer";
-
-//teste
-// VAI RECEBER DADOS DO ESTOQUE E PRODUTOS E DOS AGENDAMENTOS
-let _lancamentos = [
-  { id: "1", data: "02/04/2026", descricao: "Consulta pronto socorro", categoria: "Consulta", valor: 500,   status: "Pago",     tipo: "receita" },
-  { id: "2", data: "03/04/2026", descricao: "Vacina V10",              categoria: "Vacina",   valor: 50,    status: "Pago",     tipo: "receita" },
-  { id: "3", data: "03/04/2026", descricao: "Procedimento de castração",categoria: "Cirurgia", valor: 500,  status: "Pago",     tipo: "receita" },
-  { id: "4", data: "04/04/2026", descricao: "Compra de insumos",       categoria: "Gasto",    valor: 1000,  status: "Pago",     tipo: "gasto"   },
-];
-
-const fakeApi = {
-  getLancamentos: () => Promise.resolve([..._lancamentos]),
-  addLancamento: (l) => {
-    const novo = { ...l, id: Date.now().toString() };
-    _lancamentos = [..._lancamentos, novo];
-    return Promise.resolve(novo);
-  },
-};
+import { useAuth } from '../hooks/useAuth';
+import { adicionarLancamento, atualizarStatusLancamento, listarLancamentos } from '../services/financeiroService';
 
 const MESES = ["Jan.","Fev.","Mar.","Abr.","Mai.","Jun.","Jul.","Ago.","Set.","Out.","Nov.","Dez."];
 const MESES_NUM = { "Jan.":1,"Fev.":2,"Mar.":3,"Abr.":4,"Mai.":5,"Jun.":6,"Jul.":7,"Ago.":8,"Set.":9,"Out.":10,"Nov.":11,"Dez.":12 };
@@ -30,8 +13,11 @@ const TODAS_CATEGORIAS   = [...new Set([...CATEGORIAS_RECEITA, ...CATEGORIAS_GAS
 const STATUS_OPS         = ["Pago","Pendente","Cancelado"];
 
 function parseData(str) {
-  // dd/mm/yyyy
-  const [d, m, y] = str.split("/").map(Number);
+  if (!str) return { dia: 0, mes: 0, ano: 0 };
+  const parts = String(str).split("/");
+  if (parts.length !== 3) return { dia: 0, mes: 0, ano: 0 };
+  const [d, m, y] = parts.map(Number);
+  if (!m || !y) return { dia: 0, mes: 0, ano: 0 };
   return { dia: d, mes: m, ano: y };
 }
 
@@ -39,6 +25,14 @@ function fmt(v) {
   return Number(Math.abs(v)).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+
+function SortLabel({ active, direction }) {
+  return (
+    <span className="text-[10px] font-bold text-gray-400 leading-none">
+      {active ? (direction === "asc" ? "▲" : "▼") : ""}
+    </span>
+  );
+}
 
 function StatusBadge({ status, tipo }) {
   if (status === "Pago") {
@@ -49,7 +43,8 @@ function StatusBadge({ status, tipo }) {
   return <span className="text-sm font-bold text-gray-400">Cancelado</span>;
 }
 
-export default function Financeiro({ agendamentos = [], prontuarios = [], vendas = [], saidasEstoque = [] }) {
+export default function Financeiro({ agendamentos = [], prontuarios = [], vendas = [], saidasEstoque = [], canManage = true }) {
+  const { user } = useAuth();
   const mesAtual = new Date().getMonth() + 1;
   const mesNomeAtual = MESES[mesAtual - 1];
 
@@ -58,31 +53,21 @@ export default function Financeiro({ agendamentos = [], prontuarios = [], vendas
   const [mesSel, setMesSel]           = useState(mesNomeAtual);
   const [catFiltro, setCatFiltro]     = useState("Todas as categorias");
   const [modalGasto, setModalGasto]   = useState(false);
+  const podeEscrever = canManage && user?.tipo !== 'cliente';
+  const [sortConfig, setSortConfig] = useState({ key: "data", direction: "desc" });
 
-  /**
-   * Carrega dados: combina dados mock com dados de agendamentos
-   * TODO: Quando a API estiver pronta, remover fakeApi e usar dados da API diretamente
-   */
+  function handleSort(key) {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === "asc" ? "desc" : "asc",
+    }));
+  }
+
   async function carregar() {
     setLoading(true);
     
-    // Dados mock do fakeApi (MANTER ATÉ A API ESTAR PRONTA)
-    const dataMock = await fakeApi.getLancamentos();
-    
-    // Transforma agendamentos e outros dados em lançamentos financeiros
-    const lancamentosAutomaticos = consolidarLancamentosFinanceiros({
-      agendamentos,
-      prontuarios,
-      vendas,
-      saidasEstoque,
-      // TODO: Descomente quando a API estiver integrada:
-      // agendamentosAPI: dados.agendamentos_realizados,
-      // prontuariosAPI: dados.prontuarios_validados,
-    });
-
-    // Consolida: mantém dados mock + automaticamente gerados
-    // (Mock primeiro para manter os dados de exemplo)
-    setLancamentos([...dataMock, ...lancamentosAutomaticos]);
+    const dataApi = await listarLancamentos();
+    setLancamentos(dataApi);
     setLoading(false);
   }
 
@@ -93,12 +78,24 @@ export default function Financeiro({ agendamentos = [], prontuarios = [], vendas
 
   const mesNum = MESES_NUM[mesSel];
 
-  const lancamentosFiltrados = lancamentos.filter(l => {
-    const { mes } = parseData(l.data);
-    const matchMes = mes === mesNum;
-    const matchCat = catFiltro === "Todas as categorias" || l.categoria === catFiltro;
-    return matchMes && matchCat;
-  });
+  const lancamentosFiltrados = useMemo(() => {
+    const filtrados = lancamentos.filter(l => {
+      const { mes } = parseData(l.data);
+      return mes === mesNum && (catFiltro === "Todas as categorias" || l.categoria === catFiltro);
+    });
+    const factor = sortConfig.direction === "asc" ? 1 : -1;
+    return [...filtrados].sort((a, b) => {
+      if (sortConfig.key === "data") {
+        const { ano: ay, mes: am, dia: ad } = parseData(a.data);
+        const { ano: by, mes: bm, dia: bd } = parseData(b.data);
+        return (ay * 10000 + am * 100 + ad - (by * 10000 + bm * 100 + bd)) * factor;
+      }
+      const aVal = a[sortConfig.key];
+      const bVal = b[sortConfig.key];
+      if (typeof aVal === "number") return (aVal - bVal) * factor;
+      return String(aVal || "").localeCompare(String(bVal || ""), "pt-BR") * factor;
+    });
+  }, [lancamentos, mesNum, catFiltro, sortConfig]);
 
   const lancamentosMes = lancamentos.filter(l => parseData(l.data).mes === mesNum);
 
@@ -119,14 +116,21 @@ export default function Financeiro({ agendamentos = [], prontuarios = [], vendas
     .reduce((a, l) => l.tipo === "receita" ? a + l.valor : a - l.valor, 0);
 
   async function handleInserir(novo) {
-    const salvo = await fakeApi.addLancamento(novo);
-    setLancamentos(prev => [...prev, salvo]);
-    const { mes } = parseData(salvo.data);
-    setMesSel(MESES[mes - 1]);
-    setModalGasto(false);
+    try {
+      const salvo = await adicionarLancamento(novo);
+      setLancamentos(prev => [...prev, salvo]);
+      const { mes } = parseData(salvo.data);
+      setMesSel(MESES[mes - 1]);
+      setModalGasto(false);
+    } catch (err) {
+      console.error('Erro ao inserir lançamento:', err);
+      throw err;
+    }
   }
 
-  function handleAlterarStatus(id) {
+  async function handleAlterarStatus(id) {
+    const atualizado = await atualizarStatusLancamento(id, "Pago");
+    if (!atualizado) return;
     setLancamentos(prev => prev.map(l => 
       l.id === id && l.status === "Pendente" ? { ...l, status: "Pago" } : l
     ));
@@ -183,7 +187,7 @@ export default function Financeiro({ agendamentos = [], prontuarios = [], vendas
       <div className="px-8 py-8 w-full">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Controle Financeiro</h1>
-          <button
+          {podeEscrever && <button
             onClick={() => setModalGasto(true)}
             className="flex items-center gap-1.5 bg-pink-500 hover:bg-pink-600 text-white font-bold text-sm px-5 py-3 rounded-xl transition-colors shadow-sm"
           >
@@ -191,7 +195,7 @@ export default function Financeiro({ agendamentos = [], prontuarios = [], vendas
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             Lançamento
-          </button>
+          </button>}
         </div>
 
         <div className="grid grid-cols-3 gap-4 mb-6">
@@ -249,11 +253,21 @@ export default function Financeiro({ agendamentos = [], prontuarios = [], vendas
           </div>
 
           <div className="flex items-center justify-between px-6 py-3 border-t border-b border-gray-100 bg-gray-50">
-            <span className="text-sm font-semibold text-gray-700 w-[15%]">Data</span>
-            <span className="text-sm font-semibold text-gray-700 w-[30%]">Descrição</span>
-            <span className="text-sm font-semibold text-gray-700 w-[15%]">Categoria</span>
-            <span className="text-sm font-semibold text-gray-700 w-[12%] text-right">Valor</span>
-            <span className="text-sm font-semibold text-gray-700 w-[13%] text-right">Status</span>
+            <button type="button" onClick={() => handleSort("data")} className="text-sm font-semibold text-gray-700 w-[15%] flex items-center gap-1">
+              <span>Data</span><SortLabel active={sortConfig.key === "data"} direction={sortConfig.direction} />
+            </button>
+            <button type="button" onClick={() => handleSort("descricao")} className="text-sm font-semibold text-gray-700 w-[30%] flex items-center gap-1">
+              <span>Descrição</span><SortLabel active={sortConfig.key === "descricao"} direction={sortConfig.direction} />
+            </button>
+            <button type="button" onClick={() => handleSort("categoria")} className="text-sm font-semibold text-gray-700 w-[15%] flex items-center gap-1">
+              <span>Categoria</span><SortLabel active={sortConfig.key === "categoria"} direction={sortConfig.direction} />
+            </button>
+            <button type="button" onClick={() => handleSort("valor")} className="text-sm font-semibold text-gray-700 w-[12%] flex items-center justify-end gap-1">
+              <span>Valor</span><SortLabel active={sortConfig.key === "valor"} direction={sortConfig.direction} />
+            </button>
+            <button type="button" onClick={() => handleSort("status")} className="text-sm font-semibold text-gray-700 w-[13%] flex items-center justify-end gap-1">
+              <span>Status</span><SortLabel active={sortConfig.key === "status"} direction={sortConfig.direction} />
+            </button>
           </div>
 
           {loading ? (
@@ -280,7 +294,7 @@ export default function Financeiro({ agendamentos = [], prontuarios = [], vendas
                 </span>
                 <div className="w-[13%] text-right flex items-center justify-end gap-2">
                   <StatusBadge status={l.status} tipo={l.tipo} />
-                  {l.status === "Pendente" && (
+                  {podeEscrever && l.status === "Pendente" && (
                     <button
                       onClick={() => handleAlterarStatus(l.id)}
                       className="px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200 rounded-lg font-semibold transition-colors"
@@ -297,7 +311,7 @@ export default function Financeiro({ agendamentos = [], prontuarios = [], vendas
 
       </div>
 
-      {modalGasto && (
+      {modalGasto && podeEscrever && (
         <ModalInserirGasto
           onClose={() => setModalGasto(false)}
           onInserir={handleInserir}
