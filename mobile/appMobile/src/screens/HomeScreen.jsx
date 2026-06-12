@@ -3,7 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, SafeAreaView, RefreshControl,
   TextInput, Animated, KeyboardAvoidingView, Platform,
-  Modal,
+  Modal, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -161,10 +161,11 @@ export default function HomeScreen({ navigation, route }) {
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <View style={styles.logoCircle}>
-            <Text style={{ fontSize: 22 }}>🐾</Text>
-          </View>
-          <View style={{ marginLeft: 12, flex: 1 }}>
+          <Image
+            source={require('../assets/logoVet (1).png')}
+            style={styles.logo}
+          />
+          <View style={{ marginLeft: 10, flex: 1 }}>
             <Text style={styles.ola}>Olá, {user?.nome?.split(' ')[0]}</Text>
             <Text style={styles.subtitulo}>Acompanhe a saúde dos seus pets</Text>
           </View>
@@ -307,17 +308,10 @@ export default function HomeScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  safe:   { flex: 1, backgroundColor: COLORS.pinkBg },
-  header: { backgroundColor: COLORS.pinkBg, paddingBottom: 8 },
-  headerTop: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 20, paddingTop: 16, marginBottom: 4,
-  },
-  logoCircle: {
-    width: 46, height: 46, borderRadius: 23,
-    backgroundColor: COLORS.white,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  safe:      { flex: 1, backgroundColor: COLORS.pinkBg, paddingTop: 20 },
+  header:    { backgroundColor: COLORS.pinkBg, paddingBottom: 4 },
+  headerTop: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, marginBottom: 4 },
+  logo:      { width: 46, height: 46, borderRadius: 23 },
   ola:       { fontSize: 20, fontWeight: '800', color: COLORS.pink },
   subtitulo: { fontSize: 12, color: COLORS.gray600, marginTop: 1 },
 
