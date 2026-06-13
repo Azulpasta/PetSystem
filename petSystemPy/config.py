@@ -22,6 +22,8 @@ def _build_db_uri(default_host='localhost', default_user='root', default_pass='p
     """Build SQLAlchemy URI from DATABASE_URL or individual DB_* vars."""
     url = os.getenv('DATABASE_URL')
     if url:
+        if url.startswith('mysql://'):
+            url = url.replace('mysql://', 'mysql+pymysql://', 1)
         return url
     host = os.getenv('DB_HOST', default_host)
     if host == 'mysql':
