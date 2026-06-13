@@ -1,0 +1,390 @@
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from models import User, Tutor, db
+from auth import (
+    authenticate_user, 
+    hash_password, 
+    verify_password,
+    require_auth,
+    require_role,
+    create_tokens,
+    get_current_user
+)
+
+auth_bp = Blueprint('auth', __name__)
+
+VALID_USER_TYPES = {'admin', 'veterinario', 'atendente', 'gerente', 'cliente'}
+USER_TYPE_ALIASES = {
+    'administrador': 'admin',
+    'usuario': 'atendente',
+    'user': 'atendente',
+}
+
+
+def normalize_user_type(tipo_usuario):
+    tipo_normalizado = (tipo_usuario or '').strip().lower()
+    tipo_mapeado = USER_TYPE_ALIASES.get(tipo_normalizado, tipo_normalizado)
+    if tipo_mapeado in VALID_USER_TYPES:
+        return tipo_mapeado
+    return None
+
+
+@auth_bp.route('/login', methods=['POST'])
+def login():
+    """
+    Login endpoint.
+    Expects JSON: { "login": "...", "password": "..." }
+    Returns: { "success": true, "access_token": "...", "refresh_token": "...", "user": {...} }
+    """
+    try:
+        dados = request.get_json()
+        
+        if not dados:
+            return jsonify({
+                'success': False,
+                'error': 'Nenhum dado recebido',
+                'code': 'EMPTY_REQUEST'
+            }), 400
+        
+        login_field = dados.get('login', '').strip()
+        senha = dados.get('password', '')
+        
+        if not login_field or not senha:
+            return jsonify({
+                'success': False,
+                'error': 'Login e senha são obrigatórios',
+                'code': 'MISSING_FIELDS'
+            }), 400
+        
+        usuario = authenticate_user(login_field, senha)
+        
+        if not usuario:
+            return jsonify({
+                'success': False,
+                'error': 'Login ou senha incorretos',
+                'code': 'INVALID_CREDENTIALS'
+            }), 401
+        
+        if not usuario.ativo:
+            return jsonify({
+                'success': False,
+                'error': 'Usuário inativo. Entre em contato com o administrador',
+                'code': 'USER_INACTIVE'
+            }), 403
+        
+        # Create tokens
+        tokens = create_tokens(usuario.id_usuario)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Login bem-sucedido. Bem-vindo, {usuario.nome}!',
+            'access_token': tokens['access_token'],
+            'refresh_token': tokens['refresh_token'],
+            'user': {
+                'id': usuario.id_usuario,
+                'nome': usuario.nome,
+                'login': usuario.login,
+                'tipo': usuario.tipo_usuario,
+                'tutor_id': usuario.id_tutor,
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao fazer login: {str(e)}',
+            'code': 'INTERNAL_ERROR'
+        }), 500
+
+
+@auth_bp.route('/logout', methods=['POST'])
+@jwt_required()
+def logout():
+    """
+    Logout endpoint.
+    Requires JWT token in Authorization header.
+    Returns: { "success": true, "message": "..." }
+    """
+    try:
+        usuario_id = get_jwt_identity()
+        
+        # Token will be invalidated on the client side
+        # In production, you might want to blacklist the token
+        return jsonify({
+            'success': True,
+            'message': 'Logout realizado com sucesso'
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao fazer logout: {str(e)}',
+            'code': 'INTERNAL_ERROR'
+        }), 500
+
+
+@auth_bp.route('/me', methods=['GET'])
+@require_auth
+def get_current_user_info(current_user):
+    """
+    Get current user information.
+    Requires JWT token in Authorization header.
+    Returns: { "success": true, "user": {...} }
+    """
+    try:
+        return jsonify({
+            'success': True,
+            'user': {
+                'id': current_user.id_usuario,
+                'nome': current_user.nome,
+                'login': current_user.login,
+                'tipo': current_user.tipo_usuario,
+                'ativo': current_user.ativo,
+                'tutor_id': current_user.id_tutor
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao obter dados do usuário: {str(e)}',
+            'code': 'INTERNAL_ERROR'
+        }), 500
+
+
+@auth_bp.route('/register', methods=['POST'])
+@require_role('admin')
+def register(current_user):
+    """
+    Register new user.
+    Expects JSON: { "nome": "...", "login": "...", "password": "..." }
+    Returns: { "success": true, "user": {...}, "access_token": "...", "refresh_token": "..." }
+    """
+    try:
+        dados = request.get_json()
+        
+        if not dados:
+            return jsonify({
+                'success': False,
+                'error': 'Nenhum dado recebido',
+                'code': 'EMPTY_REQUEST'
+            }), 400
+        
+        nome = dados.get('nome', '').strip()
+        login = dados.get('login', '').strip().lower()
+        senha = dados.get('password', '')
+        tipo_usuario = normalize_user_type(dados.get('tipo', 'atendente'))
+        tutor_id = dados.get('tutor_id')
+        
+        # Validate required fields
+        if not nome or not login or not senha:
+            return jsonify({
+                'success': False,
+                'error': 'Nome, login e senha são obrigatórios',
+                'code': 'MISSING_FIELDS'
+            }), 400
+        
+        # Check if login already exists
+        if User.query.filter_by(login=login).first():
+            return jsonify({
+                'success': False,
+                'error': 'Login já existe',
+                'code': 'LOGIN_ALREADY_EXISTS'
+            }), 409
+        
+        # Validate password length
+        if len(senha) < 6:
+            return jsonify({
+                'success': False,
+                'error': 'Senha deve ter pelo menos 6 caracteres',
+                'code': 'WEAK_PASSWORD'
+            }), 400
+
+        if not tipo_usuario:
+            return jsonify({
+                'success': False,
+                'error': 'Tipo de usuário inválido',
+                'code': 'INVALID_USER_TYPE'
+            }), 400
+
+        if tutor_id is not None:
+            tutor = Tutor.query.get(tutor_id)
+            if not tutor:
+                return jsonify({
+                    'success': False,
+                    'error': 'Tutor não encontrado para vincular ao usuário',
+                    'code': 'TUTOR_NOT_FOUND'
+                }), 404
+        
+        # Create new user
+        novo_usuario = User(
+            nome=nome,
+            login=login,
+            senha_hash=hash_password(senha),
+            tipo_usuario=tipo_usuario,
+            ativo=True,
+            id_tutor=tutor_id
+        )
+        
+        db.session.add(novo_usuario)
+        db.session.commit()
+        
+        # Create tokens
+        tokens = create_tokens(novo_usuario.id_usuario)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Registro bem-sucedido!',
+            'access_token': tokens['access_token'],
+            'refresh_token': tokens['refresh_token'],
+            'user': {
+                'id': novo_usuario.id_usuario,
+                'nome': novo_usuario.nome,
+                'login': novo_usuario.login,
+                    'tipo': novo_usuario.tipo_usuario,
+                    'tutor_id': novo_usuario.id_tutor
+            }
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao registrar usuário: {str(e)}',
+            'code': 'INTERNAL_ERROR'
+        }), 500
+
+
+@auth_bp.route('/users', methods=['GET'])
+@require_role('admin', 'atendente')
+def list_users(current_user):
+    """
+    List active system users.
+    Requires role: admin or atendente.
+    """
+    try:
+        usuarios = User.query.filter_by(ativo=True).all()
+
+        return jsonify({
+            'success': True,
+            'data': [
+                {
+                    'id': usuario.id_usuario,
+                    'nome': usuario.nome,
+                    'login': usuario.login,
+                    'tipo': usuario.tipo_usuario,
+                    'ativo': usuario.ativo,
+                    'tutor_id': usuario.id_tutor,
+                }
+                for usuario in usuarios
+            ],
+            'total': len(usuarios),
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao listar usuários: {str(e)}',
+            'code': 'INTERNAL_ERROR'
+        }), 500
+
+
+@auth_bp.route('/register-cliente', methods=['POST'])
+def register_cliente():
+    """
+    Public self-registration for client (tutor) users.
+    Creates Tutor + User(tipo='cliente') in a single transaction.
+    Expects JSON: { "nome", "login", "password", "cpf", "telefone"?, "endereco"? }
+    """
+    try:
+        dados = request.get_json()
+        if not dados:
+            return jsonify({'success': False, 'error': 'Nenhum dado recebido', 'code': 'EMPTY_REQUEST'}), 400
+
+        nome     = dados.get('nome', '').strip()
+        login    = dados.get('login', '').strip().lower()
+        senha    = dados.get('password', '')
+        cpf_raw  = ''.join(filter(str.isdigit, dados.get('cpf', '')))
+        telefone = dados.get('telefone', '').strip()
+        endereco = dados.get('endereco', '').strip()
+
+        if not nome or not login or not senha or not cpf_raw:
+            return jsonify({'success': False, 'error': 'Nome, login, senha e CPF são obrigatórios', 'code': 'MISSING_FIELDS'}), 400
+
+        if len(senha) < 6:
+            return jsonify({'success': False, 'error': 'Senha deve ter pelo menos 6 caracteres', 'code': 'WEAK_PASSWORD'}), 400
+
+        if User.query.filter_by(login=login).first():
+            return jsonify({'success': False, 'error': 'Login já existe', 'code': 'LOGIN_ALREADY_EXISTS'}), 409
+
+        if Tutor.query.filter_by(cpf=cpf_raw).first():
+            return jsonify({'success': False, 'error': 'CPF já cadastrado', 'code': 'CPF_ALREADY_EXISTS'}), 409
+
+        tutor = Tutor(nome=nome, cpf=cpf_raw, telefone=telefone or None, endereco=endereco or None, ativo=True)
+        db.session.add(tutor)
+        db.session.flush()
+
+        usuario = User(
+            nome=nome,
+            login=login,
+            senha_hash=hash_password(senha),
+            tipo_usuario='cliente',
+            ativo=True,
+            id_tutor=tutor.id_tutor,
+        )
+        db.session.add(usuario)
+        db.session.commit()
+
+        tokens = create_tokens(usuario.id_usuario)
+
+        return jsonify({
+            'success': True,
+            'message': 'Cadastro realizado com sucesso!',
+            'access_token': tokens['access_token'],
+            'refresh_token': tokens['refresh_token'],
+            'user': {
+                'id': usuario.id_usuario,
+                'nome': usuario.nome,
+                'login': usuario.login,
+                'tipo': usuario.tipo_usuario,
+                'tutor_id': usuario.id_tutor,
+            }
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': f'Erro ao cadastrar: {str(e)}', 'code': 'INTERNAL_ERROR'}), 500
+
+
+@auth_bp.route('/users/<int:user_id>', methods=['DELETE'])
+@require_role('admin')
+def delete_user(user_id, current_user):
+    """
+    Soft delete a system user.
+    Requires role: admin.
+    """
+    try:
+        usuario = User.query.get(user_id)
+
+        if not usuario:
+            return jsonify({
+                'success': False,
+                'error': 'Usuário não encontrado',
+                'code': 'USER_NOT_FOUND'
+            }), 404
+
+        if usuario.id_usuario == current_user.id_usuario:
+            return jsonify({
+                'success': False,
+                'error': 'Não é permitido excluir o próprio usuário logado',
+                'code': 'SELF_DELETE_FORBIDDEN'
+            }), 400
+
+        usuario.ativo = False
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': 'Usuário deletado com sucesso'
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao deletar usuário: {str(e)}',
+            'code': 'INTERNAL_ERROR'
+        }), 500
